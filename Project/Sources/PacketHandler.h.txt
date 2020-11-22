@@ -1,0 +1,67 @@
+//PacketHandler
+
+//Packet Commands
+#define CMD_STARTUP     0x04
+#define CMD_VERSION     0x09
+#define CMD_NUMBER      0x0B
+#define CMD_SETTIME     0x0C
+#define CMD_TOWERMODE   0X0D
+#define CMD_PROGBYTE    0x07
+#define CMD_READBYTE    0x08
+#define CMD_SETPROTOCOL 0x0A
+#define CMD_ACCELVALUES 0x10
+#define CMD_DOR         0x70
+
+/*! @brief  Sends starting values to PC
+ *
+ *  @return Returns True if success
+ */
+bool StartupPacket(void);
+
+/*! @brief  Sends tower Version to PC
+ *
+ *  @return Returns True if success
+ */
+bool VersionPacket(void);
+
+/*! @brief NumberPacket
+ *  Returns current Tower number if requested or writes new Number into Flash 
+ * 
+ *  @return BOOL - true if success
+ */
+bool NumberPacket(void);
+
+/*! @brief Returns current Tower mode if requested or writes new Number into Flash 
+ *
+ *  @return bool -  True if success
+ */
+bool ModePacket(void);
+
+/*! @brief  Writes a Byte to flash
+ *
+ *  @return Returns True if success
+ */
+bool ProgBytePacket(void);
+
+/*! @brief Reads byte from memory then returns to PC
+ *
+ *  @return Returns True if success
+ */
+bool ReadBytePacket(void);
+
+/*! @brief Sets RTC clock time
+ *
+ *  @return bool -  True if success
+ */
+bool SetTimePacket(void);
+
+/*! @brief Sets RTC clock time
+ *
+ *  @return bool -  True if success
+ */
+bool SetProtocol(void);
+
+/*! @brief  Function to handle incoming packets 
+ *
+ */
+void HandlePacket(void);

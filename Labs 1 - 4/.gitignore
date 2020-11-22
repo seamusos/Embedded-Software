@@ -1,0 +1,3 @@
+# Ignore all the random VS Code files 
+/.vscode/**
+.vscode/**

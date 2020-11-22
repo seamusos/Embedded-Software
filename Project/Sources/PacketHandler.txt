@@ -1,0 +1,227 @@
+//Packet Handler
+
+#ifndef FTM_H
+#define FTM_H
+
+/*! @brief  Sends starting values to PC
+ *
+ *  @return Returns True if success
+ */
+bool StartupPacket(void)
+{
+  return ((Packet_Put(CMD_STARTUP, 0, 0, 0)) &&  /* returns the packet for the startup, version and tower number and tower Mode*/
+	        (Packet_Put(CMD_VERSION, 'v', 0x01, 0x00)) &&
+	        (Packet_Put(CMD_NUMBER, 0x01, NvtowerNumber->s.Lo, NvtowerNumber->s.Hi)) &&
+	        (Packet_Put(CMD_TOWERMODE, 0X01, NvtowerMode->s.Lo, NvtowerMode->s.Hi)) && (Packet_Put(CMD_SETPROTOCOL,1,Protocol_Mode,0)));
+}
+
+/*! @brief  Sends tower Version to PC
+ *
+ *  @return Returns True if success
+ */
+bool VersionPacket(void)
+{
+  return Packet_Put(CMD_VERSION, 'v', 0x01, 0x00); /* handles the packet for the tower version Parameter 1 = 'v' Parameter 2= 1 Parameter 3 = 0 from the Tower Serial Guide */
+}
+
+
+/*! @brief NumberPacket
+ *  Returns current Tower number if requested or writes new Number into Flash 
+ * 
+ *  @return BOOL - true if success
+ */
+bool NumberPacket(void)
+{
+  bool success = false; /*!< stores success flag */
+
+  if (Packet_Parameter1 == 0x01)        /* if the tower is in get mode it simply returns the current tower number */
+  {
+    return Packet_Put(CMD_NUMBER, 0x01, NvtowerNumber->s.Lo, NvtowerNumber->s.Hi);  // returns the towerNumber
+  }
+  else if (Packet_Parameter1 == 0x02) /* if the tower is in set mode it sets the tower number by setting the 1st parameter = 1 2nd parameter to low part of student number and 3 = the hi part of the student number */
+  {
+    success = Flash_Write16((uint16_t*)NvtowerNumber, Packet_Parameter12);
+  }
+
+  return success;  /* if the tower is not in set or get mode it will return false */
+}
+
+
+/*! @brief Returns current Tower mode if requested or writes new Number into Flash 
+ *
+ *  @return bool -  True if success
+ */
+bool ModePacket(void)
+{
+  bool success = false;                 /*!< stores success flag */
+  if (Packet_Parameter1 == 0x01)       // get mode
+  {
+    return Packet_Put(CMD_TOWERMODE, 0x01, NvtowerMode->s.Lo, NvtowerMode->s.Hi);
+  }
+  else if (Packet_Parameter1 == 0x02) /* if the tower is in set mode it sets the tower mode by setting the 1st parameter = 1 2nd parameter to low part of tower number and 3 = the hi part of the tower number */
+  {
+    success = Flash_Write16((uint16_t*)NvtowerMode, Packet_Parameter23);
+  }
+
+  return success;  /* if the tower is not in set or get mode it will return false */
+
+}
+
+/*! @brief  Writes a Byte to flash
+ *
+ *  @return Returns True if success
+ */
+bool ProgBytePacket(void)
+{
+  if ((Packet_Parameter1 < 0) || (Packet_Parameter1 > 8)) // Checks to see if the parameter is within the limits
+  {
+    return false;  // if the parameters is outside of the limits it will return 0
+  }
+
+  if (Packet_Parameter1 == 0x08) // 0x08 erases the flash
+  {
+    return Flash_Erase(); // calls the flash erase function
+  }
+
+  return Flash_Write8((uint8_t *)(FLASH_DATA_START + Packet_Parameter1), Packet_Parameter3); // Writes the data in parameter 3 at the address starting at flash data started offsetted by pac
+}
+
+/*! @brief Reads byte from memory then returns to PC
+ *
+ *  @return Returns True if success
+ */
+bool ReadBytePacket(void)
+{
+  // if packet_parameter is in range then it will return the parameters
+  if ((Packet_Parameter1 >= 0) || (Packet_Parameter1 <= 7))
+  {
+    return (Packet_Put(CMD_READBYTE, Packet_Parameter1, 0x00, _FB(FLASH_DATA_START + Packet_Parameter1))); // data is accessed via started at Flash_data_start and offsetting by PacketParameter1
+  }
+
+  return false; // if the parameter is outside of the range then the function will return false;
+}
+
+
+/*! @brief Sets RTC clock time
+ *
+ *  @return bool -  True if success
+ */
+bool SetTimePacket(void)
+{
+  if ((Packet_Parameter1 >= 0) || (Packet_Parameter1 <= 23) && (Packet_Parameter2 >= 0) || (Packet_Parameter2 <= 59) &&
+      (Packet_Parameter3 >= 0) || (Packet_Parameter3 <= 59))
+  {
+    RTC_Set(Packet_Parameter1, Packet_Parameter2, Packet_Parameter3);
+    return true;
+  }
+  else
+  {
+      return false;  // if the parameters are not within the time limits then return false
+  }
+}
+
+/*! @brief Sets RTC clock time
+ *
+ *  @return bool -  True if success
+ */
+bool SetProtocol(void)
+{
+  bool success;
+
+  if (Packet_Parameter1 == 1) // if packet parameter 1 then get current protocol mode
+  {
+    success = Packet_Put(CMD_SETPROTOCOL,1,Protocol_Mode,0); // Protocol mode
+    return success;
+  }
+
+  else if (Packet_Parameter1 == 2) //if packet parameter 1 = 2 then set protocol mode
+  {
+    if (Packet_Parameter2 == 0) // if packet parameter 2 = 0 then set  for asynchronous mode
+    {
+      Protocol_Mode = ACCEL_POLL;
+      success = Packet_Put(CMD_SETPROTOCOL,1,Protocol_Mode,0); // Protocol mode
+      Accel_SetMode(ACCEL_POLL); // Polling Method
+      return success;
+    }
+    else if (Packet_Parameter2 == 1) // if packet parameter 2 = 1  then set synchronous mode
+    {
+      Protocol_Mode = ACCEL_INT;
+      success = Packet_Put(CMD_SETPROTOCOL,1,Protocol_Mode,0); // Protocol mode
+      Accel_SetMode(ACCEL_INT); // Interrupt Method
+      return success;
+    }
+  }
+}
+
+/*! @brief  Function to handle incoming packets 
+ *
+ */
+void HandlePacket(void)
+{
+  bool success = false;   /*!< holds whether it was a success of failure of the packet handler */
+  bool request  = false;  /*!< holds if an acknowledge request has happened */
+
+  LEDs_On(LED_BLUE); // Turn on blue LED
+
+  FTM0Channel0.ioType.inputDetection = TIMER_OUTPUT_HIGH; // Start FTM0 timer - channel 0
+  FTM_StartTimer(&FTM0Channel0);
+
+  if ( PACKET_ACK_MASK & Packet_Command ) /* Looks to see if the ack bit is set */
+  {
+    request = true; /* sets the request to true */
+    Packet_Command &= 0x7F; /* takes the top bit off the command byte to ignore the ACK bit */
+  }
+
+  switch (Packet_Command)   /* checks to see which type of packet it is and handles it accordingly */
+  {
+    case CMD_STARTUP:
+      StartupPacket();
+      success = true;
+      break;
+    case CMD_VERSION:
+      VersionPacket();
+      success = true;
+      break;
+    case CMD_NUMBER:
+      NumberPacket();
+      success = true;
+      break;
+    case CMD_TOWERMODE:
+      ModePacket();
+      success = true;
+      break;
+    case CMD_PROGBYTE:
+      ProgBytePacket();
+      success = true;
+      break;
+    case CMD_READBYTE:
+      ReadBytePacket();
+      success = true;
+      break;
+    case CMD_SETTIME:
+      SetTimePacket();
+      success = true;
+      break;
+    case CMD_SETPROTOCOL:
+      SetProtocol();
+      success = true;
+      break;
+    case CMD_DOR:
+      success = true;
+      break;
+    default:
+      success = false;
+      break;
+  }
+  /* see if the handing of the packet was a success and an ack packet was requested if it is correct then set the ack bit to 1
+  *  if the packet has failed and ack was requested set the ack to indicated a nak then return the ack packet back to the tower */
+  if(request)
+  {
+    if (success)
+      Packet_Command |= PACKET_ACK_MASK;  /* sets the ack bit if */
+    else
+      Packet_Command &= ~PACKET_ACK_MASK; /* clears the ack bit */
+
+    Packet_Put(Packet_Command, Packet_Parameter1, Packet_Parameter2, Packet_Parameter3); /* send the ack nak packet back */
+  }
+}
